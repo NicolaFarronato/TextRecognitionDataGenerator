@@ -1,5 +1,5 @@
 import random as rnd
-from typing import Tuple
+
 from PIL import Image, ImageColor, ImageDraw, ImageFilter, ImageFont
 
 from trdg.utils import get_text_width, get_text_height
@@ -20,18 +20,18 @@ TH_UPPER_VOWELS = ["0xe31", "0xe34", "0xe35", "0xe36", "0xe37"]
 
 
 def generate(
-    text: str,
-    font: str,
-    text_color: str,
-    font_size: int,
-    orientation: int,
-    space_width: int,
-    character_spacing: int,
-    fit: bool,
-    word_split: bool,
-    stroke_width: int = 0,
-    stroke_fill: str = "#282828",
-) -> Tuple:
+    text,
+    font,
+    text_color,
+    font_size,
+    orientation,
+    space_width,
+    character_spacing,
+    fit,
+    word_split,
+    stroke_width=0,
+    stroke_fill="#282828",
+):
     if orientation == 0:
         return _generate_horizontal_text(
             text,
@@ -61,7 +61,7 @@ def generate(
         raise ValueError("Unknown orientation " + str(orientation))
 
 
-def _compute_character_width(image_font: ImageFont, character: str) -> int:
+def _compute_character_width(image_font, character):
     if len(character) == 1 and (
         "{0:#x}".format(ord(character))
         in TH_TONE_MARKS + TH_UNDER_VOWELS + TH_UNDER_VOWELS + TH_UPPER_VOWELS
@@ -72,17 +72,17 @@ def _compute_character_width(image_font: ImageFont, character: str) -> int:
 
 
 def _generate_horizontal_text(
-    text: str,
-    font: str,
-    text_color: str,
-    font_size: int,
-    space_width: int,
-    character_spacing: int,
-    fit: bool,
-    word_split: bool,
-    stroke_width: int = 0,
-    stroke_fill: str = "#282828",
-) -> Tuple:
+    text,
+    font,
+    text_color,
+    font_size,
+    space_width,
+    character_spacing,
+    fit,
+    word_split,
+    stroke_width=0,
+    stroke_fill="#282828",
+):
     image_font = ImageFont.truetype(font=font, size=font_size)
 
     space_width = int(get_text_width(image_font, " ") * space_width)
@@ -104,6 +104,7 @@ def _generate_horizontal_text(
     if not word_split:
         text_width += character_spacing * (len(text) - 1)
 
+    all_heights = [get_text_height(image_font, p) for p in splitted_text]
     text_height = max([get_text_height(image_font, p) for p in splitted_text])
 
     txt_img = Image.new("RGBA", (text_width, text_height), (0, 0, 0, 0))
@@ -130,8 +131,9 @@ def _generate_horizontal_text(
         rnd.randint(min(stroke_c1[1], stroke_c2[1]), max(stroke_c1[1], stroke_c2[1])),
         rnd.randint(min(stroke_c1[2], stroke_c2[2]), max(stroke_c1[2], stroke_c2[2])),
     )
-
+    real_spacing = []
     for i, p in enumerate(splitted_text):
+        real_spacing.append (sum(piece_widths[0:i]) + i * character_spacing * int(not word_split))
         txt_img_draw.text(
             (sum(piece_widths[0:i]) + i * character_spacing * int(not word_split), 0),
             p,
@@ -150,22 +152,22 @@ def _generate_horizontal_text(
         )
 
     if fit:
-        return txt_img.crop(txt_img.getbbox()), txt_mask.crop(txt_img.getbbox())
+        return txt_img.crop(txt_img.getbbox()), txt_mask.crop(txt_img.getbbox()),piece_widths,space_width
     else:
-        return txt_img, txt_mask
+        return txt_img, txt_mask ,real_spacing,all_heights
 
 
 def _generate_vertical_text(
-    text: str,
-    font: str,
-    text_color: str,
-    font_size: int,
-    space_width: int,
-    character_spacing: int,
-    fit: bool,
-    stroke_width: int = 0,
-    stroke_fill: str = "#282828",
-) -> Tuple:
+    text,
+    font,
+    text_color,
+    font_size,
+    space_width,
+    character_spacing,
+    fit,
+    stroke_width=0,
+    stroke_fill="#282828",
+):
     image_font = ImageFont.truetype(font=font, size=font_size)
 
     space_height = int(get_text_height(image_font, " ") * space_width)

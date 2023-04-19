@@ -1,5 +1,6 @@
 import os
 import random as rnd
+import re
 
 from PIL import Image, ImageFilter, ImageStat
 
@@ -16,7 +17,7 @@ class FakeTextDataGenerator(object):
     @classmethod
     def generate_from_tuple(cls, t):
         """
-        Same as generate, but takes all parameters as one tuple
+            Same as generate, but takes all parameters as one tuple
         """
 
         cls.generate(*t)
@@ -24,37 +25,38 @@ class FakeTextDataGenerator(object):
     @classmethod
     def generate(
         cls,
-        index: int,
-        text: str,
-        font: str,
-        out_dir: str,
-        size: int,
-        extension: str,
-        skewing_angle: int,
-        random_skew: bool,
-        blur: int,
-        random_blur: bool,
-        background_type: int,
-        distorsion_type: int,
-        distorsion_orientation: int,
-        is_handwritten: bool,
-        name_format: int,
-        width: int,
-        alignment: int,
-        text_color: str,
-        orientation: int,
-        space_width: int,
-        character_spacing: int,
-        margins: int,
-        fit: bool,
-        output_mask: bool,
-        word_split: bool,
-        image_dir: str,
-        stroke_width: int = 0,
-        stroke_fill: str = "#282828",
-        image_mode: str = "RGB",
-        output_bboxes: int = 0,
-    ) -> Image:
+        index,
+        text,
+        font,
+        out_dir,
+        size,
+        extension,
+        skewing_angle,
+        random_skew,
+        blur,
+        random_blur,
+        background_type,
+        distorsion_type,
+        distorsion_orientation,
+        is_handwritten,
+        name_format,
+        width,
+        alignment,
+        text_color,
+        orientation,
+        space_width,
+        character_spacing,
+        margins,
+        fit,
+        output_mask,
+        word_split,
+        image_dir,
+        stroke_width=0, 
+        stroke_fill="#282828",
+        image_mode="RGB", 
+        output_bboxes=0,
+        letters_to_attack=None
+    ):
         image = None
 
         margin_top, margin_left, margin_bottom, margin_right = margins
@@ -62,14 +64,34 @@ class FakeTextDataGenerator(object):
         vertical_margin = margin_top + margin_bottom
 
         ##########################
+        # check if attack letters#
+        ##########################
+        lta = letters_to_attack.copy()
+        attack_mask = None
+        if lta is not None:
+            attack_mask = [0] * text.__len__()
+            for i in lta:
+                match = re.search(i, text)
+                if not match:
+                    lta.remove(i)
+                    print("Letter to attack {} not found in text.".format(i))
+                    continue
+                pos_array = ([pos for pos, char in enumerate(text) if char == i])
+                for pos in pos_array:
+                    attack_mask[pos] = 1
+            # print(letters_to_attack)
+            # print(attack_mask)
+
+
+        ##########################
         # Create picture of text #
         ##########################
         if is_handwritten:
             if orientation == 1:
                 raise ValueError("Vertical handwritten text is unavailable")
-            image, mask = handwritten_text_generator.generate(text, text_color)
+            image, mask, real_spacing = handwritten_text_generator.generate(text, text_color)
         else:
-            image, mask = computer_text_generator.generate(
+            image, mask, real_spacing,all_heights = computer_text_generator.generate(
                 text,
                 font,
                 text_color,
@@ -79,7 +101,7 @@ class FakeTextDataGenerator(object):
                 character_spacing,
                 fit,
                 word_split,
-                stroke_width,
+                stroke_width, 
                 stroke_fill,
             )
         random_angle = rnd.randint(0 - skewing_angle, skewing_angle)
@@ -133,9 +155,7 @@ class FakeTextDataGenerator(object):
             resized_img = distorted_img.resize(
                 (new_width, size - vertical_margin), Image.Resampling.LANCZOS
             )
-            resized_mask = distorted_mask.resize(
-                (new_width, size - vertical_margin), Image.Resampling.NEAREST
-            )
+            resized_mask = distorted_mask.resize((new_width, size - vertical_margin), Image.Resampling.NEAREST)
             background_width = width if width > 0 else new_width + horizontal_margin
             background_height = size
         # Vertical text
@@ -183,7 +203,7 @@ class FakeTextDataGenerator(object):
         ##############################################################
         try:
             resized_img_st = ImageStat.Stat(resized_img, resized_mask.split()[2])
-            background_img_st = ImageStat.Stat(background_img)
+            background_img_st = ImageStat.Stat(background_img) 
 
             resized_img_px_mean = sum(resized_img_st.mean[:2]) / 3
             background_img_px_mean = sum(background_img_st.mean) / 3
@@ -203,6 +223,8 @@ class FakeTextDataGenerator(object):
         #############################
 
         new_text_width, _ = resized_img.size
+        # margin_bottom
+        # if letters_to_attack is not None:
 
         if alignment == 0 or width == -1:
             background_img.paste(resized_img, (margin_left, margin_top), resized_img)
@@ -227,13 +249,13 @@ class FakeTextDataGenerator(object):
                 resized_mask,
                 (background_width - new_text_width - margin_right, margin_top),
             )
-
+                    
         ############################################
         # Change image mode (RGB, grayscale, etc.) #
         ############################################
-
+        
         background_img = background_img.convert(image_mode)
-        background_mask = background_mask.convert(image_mode)
+        background_mask = background_mask.convert(image_mode) 
 
         #######################
         # Apply gaussian blur #
@@ -244,7 +266,27 @@ class FakeTextDataGenerator(object):
         )
         final_image = background_img.filter(gaussian_filter)
         final_mask = background_mask.filter(gaussian_filter)
+        
+        #####################################
+        #         HERE LETTERS ATTACK       #
+        #####################################
 
+
+        def add_pixels(image, attack_mask, margin_left, margin_top, pixel_mask,real_spacing,ratio_new_px,all_heights):
+            attacked_image = image.copy()
+            h = attacked_image.height
+            for idx, x in enumerate(attack_mask):
+                if x == 1:
+                    len_ch = ratio_new_px*(+real_spacing[idx+1]-real_spacing[idx])
+                    attacked_image.paste(pixel_mask, (int(ratio_new_px*(real_spacing[idx])+len_ch*2/3+margin_left),
+                                                      int(all_heights[idx]*ratio_new_px+margin_top-pixel_mask.size[1]-1)))
+            return attacked_image
+        if lta is not []:
+            real_spacing.append(distorted_img.size[0]-1)  
+            pixel_mask = Image.open("D:/NICOLA/UNI/Progetto/template.png")
+            ratio_new_px = new_width/distorted_img.size[0]
+            
+            attacked_image = add_pixels(final_image, attack_mask,margin_left,margin_top,pixel_mask,real_spacing,ratio_new_px,all_heights)
         #####################################
         # Generate name for resulting image #
         #####################################
@@ -281,10 +323,11 @@ class FakeTextDataGenerator(object):
                 bboxes = mask_to_bboxes(final_mask, tess=True)
                 with open(os.path.join(out_dir, tess_box_name), "w") as f:
                     for bbox, char in zip(bboxes, text):
-                        f.write(
-                            " ".join([char] + [str(v) for v in bbox] + ["0"]) + "\n"
-                        )
+                        f.write(" ".join([char] + [str(v) for v in bbox] + ['0']) + "\n")
         else:
             if output_mask == 1:
                 return final_image, final_mask
-            return final_image
+            if lta is []:
+                return [final_image, None]
+            else:
+                return [final_image, attacked_image,attack_mask,font]
